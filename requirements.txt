@@ -1,0 +1,11 @@
+boto3>=1.40.34
+kaleido>=0.2.1
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-openai>=0.2.0
+openai>=1.54.0
+pandas>=2.2.0
+plotly>=5.24.0
+python-dotenv>=1.1.1
+reportlab>=4.2.0
+streamlit>=1.39.0
