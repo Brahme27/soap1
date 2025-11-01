@@ -10,7 +10,7 @@ A sophisticated healthcare application that automatically generates SOAP (Subjec
 - **Interactive Web Interface**: Built with Streamlit for an intuitive user experience
 - **PDF Export**: Generate professional PDF reports of SOAP notes
 - **Data Visualization**: Visual analytics and insights from conversation data
-- **Secure Configuration**: Environment-based configuration for API keys and AWS credentials
+- **Secure Configuration**: Uses Streamlit secrets for secure credential management
 
 ## 🏗️ Architecture
 

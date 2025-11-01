@@ -18,25 +18,31 @@ import re
 from collections import Counter
 import boto3
 import os
-from dotenv import load_dotenv
 from s3_notifications import check_new_files, display_new_file_notification, get_file_summary, create_reminder_notification
-
-load_dotenv()
 
 @st.cache_resource
 def get_s3_client():
-    """Initialize and cache S3 client"""
-    return boto3.client(
-        's3',
-        aws_access_key_id=os.getenv('AWS_S3_ACCESS_KEY_ID'),
-        aws_secret_access_key=os.getenv('AWS_S3_SECRET_ACCESS_KEY'),
-        region_name=os.getenv('AWS_S3_REGION', 'us-east-1')
-    )
+    """Initialize and cache S3 client using Streamlit secrets"""
+    try:
+        return boto3.client(
+            's3',
+            aws_access_key_id=st.secrets["AWS"]["AWS_S3_ACCESS_KEY_ID"],
+            aws_secret_access_key=st.secrets["AWS"]["AWS_S3_SECRET_ACCESS_KEY"],
+            region_name=st.secrets["AWS"]["AWS_S3_REGION"]
+        )
+    except KeyError as e:
+        st.error(f"Missing AWS configuration in secrets: {e}")
+        return None
+    except Exception as e:
+        st.error(f"Error initializing S3 client: {e}")
+        return None
 
 def list_s3_folders_with_txt(bucket_name):
     """List all folders in S3 bucket that contain a .txt file"""
     try:
         s3_client = get_s3_client()
+        if not s3_client:
+            return {}
         response = s3_client.list_objects_v2(Bucket=bucket_name)
         
         folders_with_txt = {}
@@ -70,6 +76,8 @@ def list_s3_txt_files(bucket_name):
     """List all .txt files in S3 bucket (legacy support)"""
     try:
         s3_client = get_s3_client()
+        if not s3_client:
+            return []
         response = s3_client.list_objects_v2(Bucket=bucket_name)
         
         files = []
@@ -87,6 +95,8 @@ def get_s3_file_content(bucket_name, file_key):
     """Stream content directly from S3 without downloading to disk"""
     try:
         s3_client = get_s3_client()
+        if not s3_client:
+            return None
         response = s3_client.get_object(Bucket=bucket_name, Key=file_key)
         content = response['Body'].read().decode('utf-8')
         return content
@@ -98,6 +108,8 @@ def stream_s3_file_content(bucket_name, file_key, chunk_size=1024*1024):
     """Stream large files from S3 in chunks for memory efficiency"""
     try:
         s3_client = get_s3_client()
+        if not s3_client:
+            return ""
         response = s3_client.get_object(Bucket=bucket_name, Key=file_key)
         while True:
             chunk = response['Body'].read(chunk_size)
@@ -112,6 +124,8 @@ def upload_to_s3(bucket_name, file_key, file_content):
     """Upload file content to S3"""
     try:
         s3_client = get_s3_client()
+        if not s3_client:
+            return False
         if isinstance(file_content, str):
             file_content = file_content.encode('utf-8')
         elif isinstance(file_content, BytesIO):
@@ -127,6 +141,8 @@ def upload_pdf_to_s3(bucket_name, file_key, pdf_buffer):
     """Upload PDF buffer to S3"""
     try:
         s3_client = get_s3_client()
+        if not s3_client:
+            return False
         pdf_buffer.seek(0)
         s3_client.put_object(Bucket=bucket_name, Key=file_key, Body=pdf_buffer.getvalue(), ContentType='application/pdf')
         return True
@@ -146,6 +162,8 @@ def load_feedback_from_s3(bucket_name, folder_path):
     """Load existing feedback versions from S3"""
     try:
         s3_client = get_s3_client()
+        if not s3_client:
+            return []
         response = s3_client.list_objects_v2(Bucket=bucket_name, Prefix=f"{folder_path}/feedback_")
         
         feedback_versions = []
@@ -1595,10 +1613,10 @@ CRITICAL REQUIREMENTS:
 - For intensive treatment, you can do 2 sessions per week (sessions 1&2 = week 1, sessions 3&4 = week 2)"""
 
 
-def initialize_llm(api_key):
-    """Initialize the OpenAI LLM with LangChain"""
+def initialize_llm():
+    """Initialize the OpenAI LLM with LangChain using Streamlit secrets"""
     try:
-        import os
+        api_key = st.secrets["OPENAI"]["OPENAI_API_KEY"]
         os.environ["OPENAI_API_KEY"] = api_key
         
         llm = ChatOpenAI(
@@ -1607,6 +1625,9 @@ def initialize_llm(api_key):
             api_key=api_key
         )
         return llm
+    except KeyError as e:
+        st.error(f"Missing OpenAI API key in secrets: {e}")
+        return None
     except Exception as e:
         st.error(f"Error initializing LLM: {str(e)}")
         return None
@@ -3101,14 +3122,10 @@ def main():
     st.markdown('<div class="main-header">🩺 Clinical SOAP Note Generator</div>', unsafe_allow_html=True)
     st.markdown("AI-powered clinical documentation with comprehensive visual analytics")
     
-    # API Key input
+    # Configuration sidebar
     with st.sidebar:
         st.header("⚙️ Configuration")
-        api_key = st.text_input("OpenAI API Key", type="password", 
-                               help="Enter your OpenAI API key to enable note generation")
-        
-        if not api_key:
-            st.warning("⚠️ Please enter your OpenAI API key")
+        st.success("✅ API keys configured via secrets")
         
         st.divider()
         st.markdown("### 📋 About SOAP Notes")
@@ -3129,13 +3146,10 @@ def main():
         - Homework assignments
         """)
     
-    if not api_key:
-        st.info("👈 Please enter your OpenAI API key in the sidebar to get started")
-        return
-    
     # Initialize LLM
-    llm = initialize_llm(api_key)
+    llm = initialize_llm()
     if not llm:
+        st.error("❌ Failed to initialize AI model. Please check your configuration.")
         return
     
     # Create tabs
